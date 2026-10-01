@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<!-- saved from url=(0043)https://zombiepvz.github.io/cuttherope-dx/ -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        
+        <script src="./Cut the Rope DX - Web Edition_files/console-capture.js.download"></script>
+        <script src="./Cut the Rope DX - Web Edition_files/coi.js.download"></script>
+
+        <!-- Resolves to the directory this page is served from, so the app works from a domain
+             root and from a GitHub Pages project subpath alike. It lives here rather than being
+             injected at deploy time because publish hashes index.html into
+             service-worker-assets.js, and a later edit would leave the shipped file failing the
+             integrity check the service worker installs it with. -->
+        <!--<base href="./">--><base href=".">
+
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+        <title>Cut the Rope DX - Web Edition</title>
+
+        <meta name="description" content="Play Cut the Rope DX directly in your browser. A fan-made enhanced edition of Cut the Rope with improved gameplay and features, available online with no installation required.">
+
+        <meta name="keywords" content="Cut the Rope, Cut the Rope DX, Cut the Rope web, Cut the Rope browser, Om Nom, Cut the Rope fan game">
+
+        <meta name="author" content="zombiepvz">
+        <meta name="robots" content="index, follow">
+
+        <link rel="canonical" href="https://zombiepvz.github.io/cuttherope-dx/">
+
+        <link rel="icon" type="image/x-icon" href="https://zombiepvz.github.io/cuttherope-dx/favicon.ico">
+        <link rel="apple-touch-icon" href="./Cut the Rope DX - Web Edition_files/icon-512.png">
+        <link rel="manifest" href="https://zombiepvz.github.io/cuttherope-dx/manifest.webmanifest">
+
+        <meta name="theme-color" content="#202329">
+        <meta name="mobile-web-app-capable" content="yes">
+
+        <!-- Open Graph -->
+        <meta property="og:type" content="website">
+        <meta property="og:title" content="Cut the Rope DX Web Edition - Play Online">
+        <meta property="og:description" content="Play Cut the Rope DX directly in your browser. No installation required.">
+        <meta property="og:url" content="https://zombiepvz.github.io/cuttherope-dx/">
+        <meta property="og:image" content="https://zombiepvz.github.io/cuttherope-dx/og-image.png">
+        <meta property="og:image:type" content="image/png">
+        <meta property="og:image:width" content="1200">
+        <meta property="og:image:height" content="600">
+        <meta property="og:image:alt" content="Cut the Rope DX product card image">
+        <meta property="og:site_name" content="Cut the Rope DX">
+
+        <!-- Twitter / X -->
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:title" content="Cut the Rope DX Web Edition - Play Online">
+        <meta name="twitter:description" content="Play Cut the Rope DX directly in your browser. No installation required.">
+        <meta name="twitter:image" content="https://zombiepvz.github.io/cuttherope-dx/og-image.png">
+
+        <script type="application/ld+json">
+            {
+                "@context": "https://schema.org",
+                "@type": "SoftwareApplication",
+                "name": "Cut the Rope DX",
+                "alternateName": "Cut the Rope DX - Web Edition",
+                "url": "https://zombiepvz.github.io/cuttherope-dx/",
+                "image": "https://zombiepvz.github.io/cuttherope-dx/og-image.png",
+                "description": "A fan-made enhanced edition of Cut the Rope that can be played directly in a web browser.",
+                "applicationCategory": "GameApplication",
+                "operatingSystem": "Web browser",
+                "isAccessibleForFree": true
+            }
+        </script>
+        <style>
+            html,
+            body {
+                height: 100%;
+                margin: 0;
+                background: #000;
+                overflow: hidden;
+                -webkit-user-select: none;
+                user-select: none;
+                -webkit-tap-highlight-color: transparent;
+                touch-action: none;
+                overscroll-behavior: none;
+            }
+            /* The canvas is the viewport. The game reads this box back and lays itself out to
+               whatever shape it is, so constraining it here would be constraining the game.
+               Fixed positioning rather than viewport units because a mobile browser collapsing
+               its URL bar changes the visible area without changing 100vh. */
+            #game {
+                display: block;
+                position: fixed;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+            }
+            /* Shares the canvas's box. A cutscene is genuinely fixed-aspect, so it keeps
+               object-fit rather than stretching. z-index puts it over the game but under the
+               splash, so a cutscene can never show through the loading screen. */
+            #movie {
+                display: block;
+                position: fixed;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                z-index: 5;
+                background: #000;
+                object-fit: contain;
+            }
+            #movie[hidden] {
+                display: none;
+            }
+            #splash {
+                position: fixed;
+                inset: 0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 20px;
+                overflow-y: auto;
+                touch-action: pan-y;
+                box-sizing: border-box;
+                padding: calc(24px + env(safe-area-inset-top, 0px))
+                    calc(24px + env(safe-area-inset-right, 0px))
+                    calc(24px + env(safe-area-inset-bottom, 0px))
+                    calc(24px + env(safe-area-inset-left, 0px));
+                background: #202329;
+                color: #e6e6e6;
+                font-family:
+                    system-ui,
+                    -apple-system,
+                    "Segoe UI",
+                    Roboto,
+                    sans-serif;
+                z-index: 10;
+                transition: opacity 0.25s ease-out;
+            }
+            /* Faded rather than removed, so the canvas underneath is already painted when the
+               splash goes; pointer-events keeps the invisible overlay from eating taps. */
+            #splash.hidden {
+                opacity: 0;
+                pointer-events: none;
+            }
+            #splash > * {
+                flex-shrink: 0;
+            }
+            #splash::before,
+            #splash::after {
+                content: "";
+                margin: auto;
+            }
+            #splash img {
+                width: 96px;
+                height: 96px;
+            }
+            #splash p,
+            #splash h1 {
+                margin: 0;
+                max-width: min(100%, 40rem);
+                overflow-wrap: anywhere;
+                text-align: center;
+            }
+            #splash h1 {
+                font-size: 1.25rem;
+                font-weight: 600;
+            }
+            #splash #splash-hint {
+                max-width: min(100%, 320px);
+                font-size: 0.8rem;
+                line-height: 1.45;
+                opacity: 0.6;
+            }
+            #splash .spinner {
+                width: 36px;
+                height: 36px;
+                border-radius: 50%;
+                border: 4px solid #3a3f47;
+                border-top-color: #e6e6e6;
+                animation: splash-spin 0.8s linear infinite;
+            }
+            #splash .spinner[hidden] {
+                display: none;
+            }
+            @keyframes splash-spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+            #start {
+                padding: 12px 28px;
+                font-size: 1rem;
+                border: 0;
+                border-radius: 8px;
+                cursor: pointer;
+            }
+            #start[hidden],
+            #resume[hidden] {
+                display: none;
+            }
+            #resume {
+                padding: 12px 28px;
+                font-size: 1rem;
+                border: 0;
+                border-radius: 8px;
+                cursor: pointer;
+            }
+            #export-log {
+                padding: 8px 18px;
+                font-size: 0.85rem;
+                border: 1px solid #3a3f47;
+                border-radius: 8px;
+                background: transparent;
+                color: #e6e6e6;
+                cursor: pointer;
+                opacity: 0.75;
+            }
+            #export-log:hover {
+                opacity: 1;
+            }
+            #export-log[hidden],
+            #export-log-status[hidden] {
+                display: none;
+            }
+            #export-log-status {
+                font-size: 0.8rem;
+                opacity: 0.6;
+            }
+            #update {
+                padding: 20px 24px;
+                border: 0;
+                border-radius: 10px;
+                background: #202329;
+                color: #e6e6e6;
+                font-family:
+                    system-ui,
+                    -apple-system,
+                    "Segoe UI",
+                    Roboto,
+                    sans-serif;
+                box-shadow: 0 8px 32px rgb(0 0 0 / 50%);
+            }
+            #update::backdrop {
+                background: rgb(0 0 0 / 50%);
+            }
+            #update p {
+                margin: 0 0 16px;
+            }
+            #update-actions {
+                display: flex;
+                gap: 8px;
+                justify-content: flex-end;
+            }
+            #update button {
+                padding: 8px 18px;
+                font-size: 0.95rem;
+                border: 0;
+                border-radius: 6px;
+                cursor: pointer;
+            }
+        </style>
+    <link rel="stylesheet" href="./Cut the Rope DX - Web Edition_files/css2"><style id="page-blur-selection-style">
+        ::selection {
+          background-color: #BADEFE !important;
+          color: #000000 !important;
+        }
+        ::-moz-selection {
+          background-color: #BADEFE !important;
+          color: #000000 !important;
+        }
+      </style></head>
+    <body>
+        <canvas id="game" style="cursor: image-set(url(&quot;data:image/png;base64,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&quot;) 1x, url(&quot;./content/images/cursor.webp&quot;) 2x) 0 0, auto;"></canvas>
+        <video id="movie" playsinline="" hidden="" style="cursor: image-set(url(&quot;data:image/png;base64,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&quot;) 1x, url(&quot;./content/images/cursor.webp&quot;) 2x) 0 0, auto;"></video>
+        <div id="splash">
+            <img src="./Cut the Rope DX - Web Edition_files/icon-512.png" width="96" height="96" alt="Cut the Rope DX icon" decoding="async">
+            <div class="spinner" id="splash-spinner" hidden=""></div>
+            
+            <h1>Cut the Rope DX - Web Edition</h1>
+            <button id="start">Play</button>
+            <p id="splash-hint" role="status" hidden="">
+                Taking too long? You might want to check your internet speed, or
+                reload the page.
+            </p>
+            <p id="unsupported-error" role="alert" hidden="">
+                This browser is too old to run the game. iOS and iPadOS need
+                version 15 or newer.
+            </p>
+            <p id="boot-error" role="alert" hidden="">
+                The game could not start. Check your connection and reload the
+                page.
+            </p>
+            <p id="context-lost-error" role="alert" hidden="">
+                The browser reset the game's graphics. Reload to continue -
+                previously saved progress should still be there, but the current
+                level will restart.
+            </p>
+            <button id="resume" hidden="">Resume</button>
+            <button id="export-log">Export log</button>
+            <p id="export-log-status" role="status" hidden=""></p>
+        </div>
+        <dialog id="update">
+            <p>A new version of the game is ready.</p>
+            <div id="update-actions">
+                <button id="update-later">Later</button>
+                <button id="update-now">Update</button>
+            </div>
+        </dialog>
+        <script type="module" src="./Cut the Rope DX - Web Edition_files/pwa.js.download"></script>
+        <script type="module">
+            // Loading has two stretches with no reporting of their own — compiling what was
+            // downloaded, and decoding the audio — so a slow device and a wedged one look alike
+            // from here. The advice waits out a comfortably slow start rather than accusing
+            // every one of them of being broken.
+            const HINT_DELAY_MS = 30000;
+
+            const start = document.getElementById("start");
+            const splash = document.getElementById("splash");
+            const spinner = document.getElementById("splash-spinner");
+            const hint = document.getElementById("splash-hint");
+            const progress = document.getElementById("splash-progress");
+            const hintTimer = setTimeout(() => {
+                hint.hidden = false;
+            }, HINT_DELAY_MS);
+
+            // The advice is for a slow start, not a stopped one. A boot that has already
+            // failed says so on the splash, and this arriving half a minute later would talk
+            // over it with a suggestion that no longer applies.
+            globalThis.ctrdxStopHint = () => {
+                clearTimeout(hintTimer);
+                hint.hidden = true;
+            };
+            globalThis.ctrdxReady = () => {
+                globalThis.ctrdxStopHint();
+                spinner.hidden = true;
+                progress.remove();
+                start.hidden = false;
+            };
+            // The failure seam lives here, not in main.js, because main.js reaches its own
+            // first statement only after its static imports have been fetched and evaluated.
+            // An import that fails takes main.js down before anything it installs exists.
+            // This module imports nothing and runs first, so it is the earliest point that
+            // can still speak. The first failure wins: a failed boot knocks over what follows
+            // it, and the cascade is noise once the cause is on screen.
+            let reported = false;
+            globalThis.ctrdxFail = (id, detail) => {
+                if (reported) {
+                    return;
+                }
+                reported = true;
+
+                console.error(`ctrdx-boot-failure: ${id}`, detail ?? "");
+                globalThis.ctrdxStopHint();
+                spinner.hidden = true;
+                progress.hidden = true;
+                start.hidden = true;
+                splash.classList.remove("hidden");
+                document.getElementById(id)?.removeAttribute("hidden");
+            };
+
+            const onBootRejection = (event) =>
+                globalThis.ctrdxFail("boot-error", event.reason);
+            const onBootError = (event) =>
+                globalThis.ctrdxFail(
+                    "boot-error",
+                    event.error ?? event.message,
+                );
+            globalThis.addEventListener("unhandledrejection", onBootRejection);
+            globalThis.addEventListener("error", onBootError);
+
+            // Called once the game is running. After boot a rejection belongs to the running
+            // game, and covering a playable session with the boot error screen would cost the
+            // player more than the rejection did.
+            globalThis.ctrdxBootComplete = () => {
+                globalThis.removeEventListener(
+                    "unhandledrejection",
+                    onBootRejection,
+                );
+                globalThis.removeEventListener("error", onBootError);
+                // Only now, on a page that was already isolated without it: the worker claims
+                // the page when it activates, and a controller swap during startup lands in
+                // the middle of the runtime fetching its own worker scripts.
+                globalThis.ctrdxInstallWorker?.();
+            };
+
+            start.addEventListener("click", async () => {
+                await globalThis.ctrdxStart();
+                splash.classList.add("hidden");
+            });
+
+            // The page owns this rather than the game: a run that never reached the game is
+            // exactly the run whose log is worth having, and the worker that would have served
+            // the request is the thing that did not start. Reading the database directly leaves
+            // the button working whatever happened behind it.
+            const exportLog = document.getElementById("export-log");
+            const exportStatus = document.getElementById("export-log-status");
+
+            // The splash is what a player looks at while waiting, so an outcome that stayed there
+            // would still be sitting under the Play button on the next launch.
+            const STATUS_LINGER_MS = 5000;
+            let statusTimer = null;
+
+            function showExportStatus(text, linger) {
+                clearTimeout(statusTimer);
+                statusTimer = null;
+                exportStatus.textContent = text;
+                exportStatus.hidden = false;
+                if (linger) {
+                    statusTimer = setTimeout(() => {
+                        exportStatus.hidden = true;
+                        statusTimer = null;
+                    }, STATUS_LINGER_MS);
+                }
+            }
+
+            exportLog.addEventListener("click", async () => {
+                exportLog.disabled = true;
+                // Not timed: the export replaces it as soon as it knows the outcome, and a
+                // progress note that cleared itself mid-export would read as a failure.
+                showExportStatus("Collecting…", false);
+                try {
+                    const { exportZip } = await import("./log.js");
+                    // console-capture.js may still be handing its first entries to the store.
+                    await globalThis.ctrdxCaptureSettled?.();
+                    const saved = await exportZip();
+                    showExportStatus(
+                        saved === 0
+                            ? "No logs recorded yet."
+                            : `Exported ${saved} ${saved === 1 ? "log" : "logs"}.`,
+                        true,
+                    );
+                } catch (error) {
+                    showExportStatus(
+                        `Could not export the log: ${error}`,
+                        true,
+                    );
+                } finally {
+                    exportLog.disabled = false;
+                }
+            });
+
+            // The application is imported here rather than through its own script tag so that
+            // this bootstrap owns the promise for its whole module graph. A module that fails
+            // to *download* raises an error event at its script element, and that event does
+            // not bubble - so a plain window listener never sees it, and the page would sit on
+            // its spinner with nothing reported. Verified in Chromium: with a separate script
+            // tag a 404 on one of main.js's static imports reached no handler at all, while
+            // this form reports it. Listening in the capture phase would also catch it, but it
+            // catches every failed resource with it - a broken splash icon would then report a
+            // boot failure over a game that started perfectly well, which was likewise
+            // confirmed. A rejection here is precise about what actually failed.
+            import("./main.js").catch((error) =>
+                globalThis.ctrdxFail("boot-error", error),
+            );
+        </script>
+    
+
+<page-blur-root><template shadowrootmode="open">
+<!-- saved from url=(0043)https://zombiepvz.github.io/cuttherope-dx/ -->
+<html><head><style>/* WXT Shadow Root Reset */ :host{all:initial !important;}</style></head><body><style>
+          * {
+            font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+          }
+        </style><div id="page-blur-root"></div></body></html></template></page-blur-root></body></html>
